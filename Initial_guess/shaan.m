@@ -1,0 +1,198 @@
+clc,clear
+% cd ..
+% A1_ShaanThesisCodeSetup, format long
+% This script sets up the path and global vars while clearing everything
+
+%% Boundry Conditions
+global mu
+mu = 3.986004418e5;     % (km^3/sec^2)
+opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
+opts1 = odeset('RelTol',1e-6,'AbsTol',1e-6, 'Events',@myEventsFcn);
+
+% Departure State
+rd = [6.6864e3; 0;0];
+vd = [0;6.8190;3.7029];
+DCs = [rd;vd];
+
+% Departure Orbit Time
+aa = -0.5*mu/(0.5*norm(vd)^2-mu/norm(rd)); Pa = 2*pi*sqrt(aa^3/mu);
+t = linspace(0,10*Pa,1000);
+
+% Departure Orbit
+[~,xd]  = ode45(@Non_Perturbed_state, t, DCs, opts, mu);
+Xinitial = [xd(1,:)]; % Departure Point
+
+% Arrival State
+ra = [6.9718e3; 1.9137e3; 1.0197e3];
+va = [-2.2261; 6.2343; 3.3750];
+ACs = [ra;va];
+
+% Arrival Orbit Time
+ad = -0.5*mu/(0.5*norm(va)^2-mu/norm(ra)); Pd = 2*pi*sqrt(ad^3/mu);
+t = linspace(0,Pd,1000);
+
+% Arrival Orbit
+[~,xa]  = ode45(@Non_Perturbed_state, t, ACs, opts, mu);
+Xfinal = [xa(1,:)]; % Arrival Point
+
+% Boundry Conditions
+r0 = Xinitial(1:3)'; v0 = Xinitial(4:6)';
+rf = Xfinal(1:3)'; vf = Xfinal(4:6)';
+
+% plotResults(xd,xa)
+
+r_0 = rd; v_0 = vd; r_t = ra; v_t = va;
+
+%% Paramters
+u_max = 9.8e-2; % km/s2
+% TU = 806.812; % sec
+% DU = 6378.140; % km
+% AU = 9.8e-3; % km/s2
+% Cmu = 1;
+
+I3 = eye(3);
+
+[L_0,A_0] = getLA(r_0,v_0);
+[L_t,A_t] = getLA(r_t,v_t);
+
+dL = L_0-L_t;
+dA = A_0-A_t;
+
+tspan = linspace(0,1e6,1e6);
+k = 1;
+%% Propigator
+
+
+[~,y,te,ye,ie] = ode45(@EOM,tspan,[r_0;v_0],opts1, L_t, A_t, mu, k, u_max);
+
+plotResults(xd,xa,y)
+
+%% EOM
+function xd = EOM(~,x,L_t, A_t,mu,k,u_max)
+
+r = x(1:3);
+v = x(4:6);
+
+[L,A] = getLA(r,v);
+
+dL = L - L_t;
+dA = A - A_t;
+
+%R = (norm(k*cross(dL,r) + cross(L,dA) + cross(cross(dA,r),r))/u_max)*eye(3);
+u = -(k*cross(dL,r) + cross(L,dA) + cross(cross(dA,v),r));
+
+u = u/norm(u)* u_max;
+% u = ((cross(k*dL, r) + cross(L,dA) + cross(cross(dA,v),r))/norm(cross(k*dL, r) + cross(L,dA) + cross(cross(dA,v),r)))*u_max;
+
+xd13 = v;
+xd46 = -mu*r/norm(r)^3 + u;
+
+xd = [xd13;xd46];
+
+end
+%% Events Function
+function [check,stop,direction] = myEventsFcn(~,x,L_t,A_t,mu,k,u_max)
+
+r = x(1:3);
+v = x(4:6);
+
+[L,A] = getLA(r,v);
+
+dL = norm(L_t - L);
+dA = norm(A_t - A);
+
+check = [dL <= 1e-2;
+    dA <= 1e-2];
+stop = [1;1];
+direction = [-1;-1];
+end
+
+%% Results
+function plotResults(xI,xT,y)
+switch nargin
+    case 3
+        txt = 'Orbit Transfer';
+        fignum = 2;
+    case 2
+        txt = 'Initial Conditions';
+        fignum = 1;
+    otherwise
+        error('Not Enough Arguments for plotResults')
+end
+
+% Plot ICs
+figure(fignum)
+plot3(xI(:,1),xI(:,2),xI(:,3),DisplayName='Starting Orbit'), hold on
+plot3(xT(:,1),xT(:,2),xT(:,3),DisplayName='Final Orbit'), hold on
+
+% Plot Transfer Orbit
+if nargin > 2
+    plot3(y(:,1), y(:,2), y(:,3),'-.k',DisplayName='Transfer Orbit'), hold on
+end
+
+% Plot Stuff
+legend(Location='Best')
+ax = gca;               % get the current axis
+ax.Clipping = 'off';    % turn clipping off
+title(txt)
+drawnow
+
+if nargin > 2 % Means that the integrator has been ran
+    figure(3)
+    sgtitle('Control Parameters')
+
+    subplot 221 % dL
+    plot(y(:,7)), hold on
+    plot(y(:,8)), hold on
+    plot(y(:,9)), hold on
+    yline(0,'--k'), hold on
+    title('$\Delta$ L',Interpreter='latex')
+    legend('$L_1$','$L_2$','$L_3$',Location='best',Interpreter='latex')
+    grid on
+    grid minor
+    
+    subplot 223 % dA
+    plot(y(:,10)), hold on
+    plot(y(:,11)), hold on
+    plot(y(:,12)), hold on
+    yline(0,'--k'), hold on
+    title('$\Delta$ A',Interpreter='latex')
+    legend('$A_1$','$A_2$','$A_3$',Location='best',Interpreter='latex')
+    grid on
+    grid minor
+    
+    subplot 222
+    plot(y(:,13)), hold on
+    plot(y(:,14)), hold on
+    plot(y(:,15)), hold on
+    yline(0,'--k'), hold on
+    title('Control Values',Interpreter='latex')
+    legend('$U_1$','$U_2$','$U_3$',Location='best',Interpreter='latex')
+    grid on
+    grid minor
+    
+    subplot 224
+    plot(y(:,16),'k'), hold on
+    title('Norm of the Control',Interpreter='latex')
+    legend('$\|U\|$',Location='best',Interpreter='latex')
+    grid on
+    grid minor
+end
+end
+
+%%
+function xdot = Non_Perturbed_state(~,x,mu)
+
+xdot = [x(4:6);
+    -mu*x(1:3)/(norm(x(1:3))^3)];
+
+end
+%%
+function [L,A,E] = getLA(r,rd)
+global mu
+
+E = 0.5*norm(rd)^2 - mu/norm(r);
+L = cross(r,rd);
+A = cross(rd,cross(r,rd)) - mu* (r/norm(r));
+
+end

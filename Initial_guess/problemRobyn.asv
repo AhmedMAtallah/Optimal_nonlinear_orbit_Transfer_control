@@ -1,0 +1,100 @@
+ function problemRobyn
+
+%% ---Constants------
+mu = 3.986004418e5; %---km^3 S^-2
+Re = 6378.137; %---km
+canonical_distance = Re;
+canonical_time = 806.812;
+canonical_accel = 9.8e-3;
+canonical_vel = canonical_distance/canonical_time;
+
+%% ---- Inputs -----
+mu_earth = 3.986004418000000e+05;
+r_0 = [26000, 0, 0]';
+v_0 = [0, sqrt(mu_earth/norm(r_0)), 0]';
+r_f_norm = 42000; %35780+6378.137; %2.869711883934245e+04; %
+v_f_norm = sqrt(mu_earth/r_f_norm); %3.738702503601947;
+span =100*24*60*60;%631.23; %2*pi*14
+%F_max = 2*10^-3/1000;
+F_max = 9.8e-5;
+%F_max = .01;
+
+x0 = [r_0/canonical_distance;v_0/canonical_vel];
+%x0 =[4.070679521663843;0;0;0;0.4953;0]
+x0 = [-0.70545852988580, -0.73885031681775, -0.40116299069586,0.73122658145185, -0.53921753373056, -0.29277123328399]';
+r_f_norm = r_f_norm/canonical_distance;
+v_f_norm = v_f_norm/canonical_vel;
+F_max = F_max/canonical_accel;
+%F_max =0.01;
+span = span/canonical_time;
+span = 40.4*2*pi;
+
+options = odeset('RelTol',1e-8,'AbsTol',1e-8,'Events',@events);
+%options = odeset('RelTol',1e-11,'AbsTol',1e-11);
+[Tk2e01,Yk2e01]=ode45(@closelooporbit_robyn,[0 span],x0,...
+    options,F_max,r_f_norm,v_f_norm) ;
+
+t_guess = Tk2e01(end)
+t_guess = t_guess*canonical_time/60/60
+nrow= size(Tk2e01,1);
+Gnorm = zeros(nrow,1);
+dA_norm = zeros(nrow,1);
+dL_norm = zeros(nrow,1);
+r_norm = zeros(nrow,1);
+for row=1:nrow
+     [~,Gnorm(row),dA_norm(row),dL_norm(row),dE_norm(row),r_norm(row)]=...
+         closelooporbit_robyn(Tk2e01(row),Yk2e01(row,:)',F_max,r_f_norm,v_f_norm);
+ end
+t_final = Tk2e01(end)*canonical_time;
+figure
+plot(Tk2e01*canonical_time/60/60,dA_norm,'r-',Tk2e01*canonical_time/60/60,...
+     dL_norm,'b-',Tk2e01*canonical_time/60/60,dE_norm,'k-')
+ 
+figure
+plot(Tk2e01*806.8111/60/60,r_norm/r_f_norm,'b-')
+
+figure
+plot3(Yk2e01(:,1),Yk2e01(:,2),Yk2e01(:,3))
+xlabel('x')
+ylabel('y')
+zlabel('z')
+% xlim([-5 12])
+% ylim([-12 12])
+% zlim([-1 1])
+
+% figure(10)
+% set(gca,'FontSize',18)
+% plot(Yk2e01(:,1),Yk2e01(:,2),'LineWidth',2)
+% 
+end
+function [value,isterminal,direction] = events(t,y,F_max,r_f_norm,v_f_norm)
+% Locate the time when height passes through zero in a decreasing direction
+% and stop integration.
+
+r_f = [r_f_norm,0,0]';
+v_f = [0,v_f_norm,0]';
+L_T = cross(r_f,v_f);
+L_T = [0, 0, 2.56612389857378]';
+A_T= [0,0,0]';
+
+r = y(1:3);
+v = y(4:6);
+
+L= cross(r,v);
+dL = L-L_T;
+dL_norm = norm(dL);
+
+A= cross(v,L)-r/norm(r);
+dA= A-A_T;
+dA_norm = norm(dA);
+
+value = norm(y(1:3)) < 0.99*r_f_norm;     % detect height = 0
+norm(y(1:3));
+%value = norm(y(1:3)) < 0.999*r_f_norm  
+norm(y(1:3));
+dA_norm;
+value = dA_norm < 8E-3 & norm(y(1:3)) > 0.9986*r_f_norm;
+%value = dA_norm < 5E-2 & norm(y(1:3)) > 0.99*r_f_norm;
+isterminal = 1;   % stop the integration
+direction = 1;   % negative direction
+end

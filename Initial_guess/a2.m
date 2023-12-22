@@ -1,0 +1,130 @@
+% function problemPaper
+
+close all
+clear
+clc
+%% ---Constants------
+mu = 1 %3.986004418e5; %---km^3 S^-2
+Re = 6378.137; %---km
+canonical_distance = 1; %Re;
+canonical_time = 1; %5806.812;
+canonical_accel = 1% 9.8e-3;
+canonical_vel = canonical_distance/canonical_time;
+
+%% ---- Inputs -----
+r_f_norm = 42000/6378.137; %canonical_distance; %35780+6378.137; %2.869711883934245e+04; %
+v_f_norm = sqrt(mu/r_f_norm); %3.738702503601947;
+span = 8 * 2* pi; %18.86 * 60 *60 ; %80*120;
+F_max = 1*9.8e-2;
+
+x0 = [-0.70545852988580, -0.73885031681775, -0.40116299069586,...
+    0.73122658145185, -0.53921753373056, -0.29277123328399]';
+%x0 = [-0.624674412813250   1.139068296304555   0.564899148483090...
+%  -0.778929990150643  -0.287386744144609  -0.155619523949421]'
+%x0 = [7000/canonical_distance,0,0,0,7.431411781944623/canonical_vel,1.310358401911609/canonical_vel]
+%x0 = [7000/canonical_distance,0,0,0,7.544903986802056/canonical_vel,.1316967889667989/canonical_vel]
+
+r_f_norm = r_f_norm/canonical_distance;
+v_f_norm = v_f_norm/canonical_vel;
+F_max = F_max/canonical_accel;
+F_max =0.03;
+span = span/canonical_time;
+span = 200; %13 * 2* pi;
+%span = 50000*2*pi/3/4;
+
+options = odeset('RelTol',1e-7,'AbsTol',1e-7,'Events',@events);
+%options = odeset('RelTol',1e-6,'AbsTol',1e-6);
+K = [0.2:0.2:1,2:10];
+K = [1:20];
+%K=7;
+%K = 2;
+K=13
+%K = [0.2:0.2:1,1.1:0.1:2];
+%K2 = [0.2:0.2:1,1.1:0.1:2];
+for k = 1:length(K)
+    [Tk2e01,Yk2e01]=ode45(@closelooporbit_paper,linspace(0,span,1001),x0,options,...
+        F_max,r_f_norm,v_f_norm,...
+         K(k),eye(3));
+      % 3,diag([K2(k),K2(k),1]));
+   
+    t_guess = Tk2e01(end)
+    t_guess = t_guess; %*canonical_time/60/60
+    nrow= size(Tk2e01,1);
+    Gnorm = zeros(nrow,1);
+    dA_norm = zeros(nrow,1);
+    dL_norm = zeros(nrow,1);
+    r_norm = zeros(nrow,1);
+    for row=1:nrow
+         [~,Gnorm(row),dA_norm(row),dL_norm(row),dE_norm(row),r_norm(row)]=...
+             closelooporbit_paper(Tk2e01(row),Yk2e01(row,:)',F_max,r_f_norm,v_f_norm,k,eye(3));
+    end
+    [a(k),ecc(k),incl(k),RAAN,argp,nu,truelon,arglat,lonper] = ijk2keplerian(Yk2e01(end,1:3)*canonical_distance*1000, Yk2e01(end,4:6)*canonical_vel*1000)
+    t_final(k) = Tk2e01(end)*canonical_time;
+    t_final(k) = Tk2e01(end)*canonical_time/60/60;
+end
+%plot(K,t_final)
+figure
+subplot(311)
+plot(K,a/1000/42000)
+ylabel('a_f / a_t')
+subplot(312)
+plot(K,ecc)
+ylabel('e_f')
+subplot(313)
+plot(K,incl)
+ylabel('i_f')
+xlabel('k')
+figure
+plot(Tk2e01*canonical_time/60/60,dA_norm,'r-',Tk2e01*canonical_time/60/60,...
+      dL_norm,'b-'); %,Tk2e01*canonical_time/60/60,dE_norm,'k-')
+%  
+% figure
+% plot(Tk2e01*806.8111/60/60,r_norm/r_f_norm,'b-')
+
+figure
+plot3(Yk2e01(:,1),Yk2e01(:,2),Yk2e01(:,3))
+xlabel('x')
+ylabel('y')
+zlabel('z')
+xlim([-8 8])
+ylim([-8 8])
+zlim([-1 1])
+axis equal
+
+% figure(10)
+% set(gca,'FontSize',18)
+% plot(Yk2e01(:,1),Yk2e01(:,2),'LineWidth',2)
+% 
+%end
+function [value,isterminal,direction] = events(t,y,F_max,r_f_norm,v_f_norm,k,R)
+% Locate the time when height passes through zero in a decreasing direction
+% and stop integration.
+
+r_f = [r_f_norm,0,0]';
+v_f = [0,v_f_norm,0]';
+L_T = cross(r_f,v_f);
+%L_T = [0, 0, 2.56612389857378]';
+A_T= [0,0,0]';
+
+r = y(1:3);
+v = y(4:6);
+
+L= cross(r,v);
+dL = L-L_T;
+dL_norm = norm(dL);
+
+A= cross(v,L)-r/norm(r);
+dA= A-A_T;
+dA_norm = norm(dA);
+
+%value = norm(y(1:3)) < 0.99*r_f_norm;     % detect height = 0
+norm(y(1:3));
+%value = norm(y(1:3)) < 0.995*r_f_norm ; 
+value =0;
+norm(y(1:3));
+%dA_norm;
+%value = dA_norm < 8E-3 & norm(y(1:3)) > 0.9986*r_f_norm;
+%value = dA_norm < 5E-2 & norm(y(1:3)) > 0.99*r_f_norm;
+isterminal = 1;   % stop the integration
+direction = -1;   % negative direction
+end

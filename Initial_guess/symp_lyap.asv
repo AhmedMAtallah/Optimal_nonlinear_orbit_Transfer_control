@@ -1,0 +1,21 @@
+clear
+clc
+r = sym('r',[3 1])
+assumeAlso(r,'real')
+v = sym('v',[3 1])
+assumeAlso(v,'real')
+L = cross(r,v)
+
+L_T = sym('L_T',[3 1])
+assumeAlso(L_T,'real')
+dL = sym('dL',[3 1])
+assumeAlso(dL,'real')
+E_T = sym('E_T',[1 1])
+assumeAlso(E_T,'real')
+A_T = sym('A_T',[3 1])
+assumeAlso(A_T,'real')
+
+V = 1/2 *(L-L_T)'*(L-L_T)
+V= simplify(V)
+
+D = [diff(L,r(1))]
